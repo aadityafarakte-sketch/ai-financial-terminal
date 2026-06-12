@@ -1,5 +1,5 @@
 import yfinance as yf
-import pandas_ta as ta
+import pandas as pd
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
