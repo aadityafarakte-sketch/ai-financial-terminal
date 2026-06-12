@@ -32,14 +32,14 @@ def generate_financial_analysis(ticker, user_query, financial_context):
         {financial_context}
         """
         
-        # Execute the model inference with strict deterministic constraints
+        # Execute the model inference using the native 2.5 engine with deterministic settings
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-2.5-flash',  # Natively supported by the new SDK
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
-                temperature=0.0,  # CRITICAL FIX: Drops creativity to zero for absolute stability
-                top_p=0.1,        # Restricts choice patterns to the highest mathematical probability
+                temperature=0.0,  # Forces absolute mathematical consistency
+                top_p=0.1,
             )
         )
         return response.text
