@@ -18,7 +18,7 @@ st.markdown("""
     div[data-testid="stMetricValue"] { font-size: 1.8rem; color: #00ffcc; }
     .stButton>button { background-color: #262730; color: white; border-radius: 6px; }
     </style>
-""", unsafe_allowed_html=True)
+""", unsafe_allow_html=True) # FIX: Changed from unsafe_allowed_html to unsafe_allow_html
 
 st.title("📈 Advanced AI Institutional Financial Terminal")
 st.caption("Real-Time Multi-Market Analytics, Quantitative Risk Desk & Deterministic AI Research Intelligence")
@@ -78,7 +78,7 @@ if 'active_ticker' in st.session_state:
             st.toast(f"Successfully pinned {ticker} to Watchlist!")
             st.rerun()
             
-        # --- ISSUE #5 FIX: DISPLAY ACCURATE DATA QUALITY INDICATOR ---
+        # Display accurate Data Quality Indicator
         available_metrics = sum(x is not None for x in [graham_value, key_ratios.get("P/E Ratio"), key_ratios.get("Price to Book")])
         quality_score = round((available_metrics / 3) * 100)
         
@@ -90,7 +90,7 @@ if 'active_ticker' in st.session_state:
                     <h3 style='margin:0; color:#ffcccc;'>⚠️ CRITICAL STRUCTURAL RISK ALERT</h3>
                     <p style='margin:5px 0 0 0; color:#ffffff;'>Asset has broken below its technical support floor baseline of <b>{support_floor:,.2f}</b>. Risk exposure mitigation frameworks should be activated immediately.</p>
                 </div>
-            """, unsafe_allowed_html=True)
+            """, unsafe_allow_html=True) # FIX: Changed from unsafe_allowed_html to unsafe_allow_html
 
         # Core Metrics Display Layout
         st.subheader("📊 Institutional Core Data Grid")
@@ -133,7 +133,6 @@ if 'active_ticker' in st.session_state:
             st.markdown("### 🎯 Quantitative Capital Position Allocations")
             per_share_risk = current_price - support_floor
             
-            # --- ISSUE #1 FIX: PREVENT POSITION SIZING EXCEEDING TOTAL TRADING CAPITAL ---
             if per_share_risk > 0:
                 risk_based_shares = int(risk_amount / per_share_risk)
                 capital_based_shares = int(total_capital / current_price)
@@ -161,7 +160,6 @@ if 'active_ticker' in st.session_state:
             else:
                 cols_val[0].info("Graham Value: N/A")
                 
-            # --- ISSUE #3 FIX: PROFESSIONAL UI WARNING FOR RETIRED DCF MODEL ---
             cols_val[1].warning("DCF disabled. Public market data layers are insufficient for reliable retail projections.")
 
         st.markdown("---")
@@ -187,7 +185,6 @@ if 'active_ticker' in st.session_state:
         with g2:
             st.markdown("### 🥧 Corporate Equity Allocation Pattern")
             
-            # --- ISSUE #2 & #4 FIX: SAFE NONE HANDLING + INDIAN TERMINOLOGY ---
             insiders = shareholding.get("insiders")
             institutions = shareholding.get("institutions")
             
@@ -214,7 +211,6 @@ if 'active_ticker' in st.session_state:
 
         if st.button("🧠 Execute High-Conviction AI Inference Run"):
             with st.spinner("Processing deep quantitative neural vector loops..."):
-                # Construct clean raw context schema mapping
                 financial_context_dict = {
                     "Ticker Symbol": ticker,
                     "Current Market Price Value": current_price,
@@ -225,7 +221,6 @@ if 'active_ticker' in st.session_state:
                     "Recent Corporate Media Catalysts Framework": news_headlines
                 }
                 
-                # --- ISSUE #6 FIX: SERIALIZE PYTHON DICT TO PURE CLEAN JSON FOR THE LLM LAYER ---
                 serialized_financial_context = json.dumps(financial_context_dict, indent=2, default=str)
                 
                 ai_report = ai_engine.generate_financial_analysis(ticker, user_query, serialized_financial_context)
