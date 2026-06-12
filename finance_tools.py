@@ -58,6 +58,7 @@ def remove_from_watchlist(ticker, exchange):
 
 # --- UTILITY: DEEP FINANCIAL STATEMENT EXTRACTOR ---
 def extract_statement_metric(df, rows_to_check):
+    """Safely extracts the latest numeric value from financial dataframes without fallbacks."""
     if df is not None and not df.empty:
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -72,13 +73,16 @@ def extract_statement_metric(df, rows_to_check):
                     return float(val)
     return None
 
+# --- UTILITY: INTERNATIONALLY AWARE CURRENCY FORMATTER ---
 def format_financial_units(value, ticker):
+    """Formats raw metrics into regional context. Returns None if value is missing."""
     if value is None or pd.isna(value):
-        return "N/A"
+        return None
+    
     is_indian = ticker.endswith(".NS") or ticker.endswith(".BO")
     if is_indian:
         return f"₹{value / 10_000_000:,.2f} Cr"
-    return f"${value / 10_000_000:,.2f} M"
+    return f"${value / 1_000_000:,.2f} M"
 
 # --- DATA ENGINE CORE FUNCTIONS ---
 def get_current_price(ticker):
@@ -104,6 +108,7 @@ def get_current_price(ticker):
         return None
 
 def get_key_ratios(ticker):
+    """STRICT: Returns real parameters. No proxy baselines or fallbacks allowed."""
     try:
         stock = yf.Ticker(ticker)
         info = stock.info if stock.info else {}
@@ -113,7 +118,8 @@ def get_key_ratios(ticker):
         forward_pe = info.get("forwardPE")
         pb = info.get("priceToBook")
         
-        if (not pb or pd.isna(pb)) and current_price:
+        # Try programmatic extraction if standard info block is restricted
+        if (pb is None or pd.isna(pb)) and current_price:
             try:
                 balance_sheet = stock.balance_sheet
                 shares = info.get("sharesOutstanding") or info.get("impliedSharesOutstanding")
@@ -121,19 +127,21 @@ def get_key_ratios(ticker):
                 total_liab = extract_statement_metric(balance_sheet, ["Total Liabilities"])
                 if total_assets and total_liab and shares and shares > 0:
                     bvps = (total_assets - total_liab) / shares
-                    if bvps > 0: pb = current_price / bvps
+                    if bvps > 0: 
+                        pb = current_price / bvps
             except Exception:
                 pass
 
         return {
-            "P/E Ratio": round(pe, 2) if pe else 24.50,  
-            "Forward P/E": round(forward_pe, 2) if forward_pe else 21.20,
-            "Price to Book": round(pb, 2) if pb else 3.10
+            "P/E Ratio": round(pe, 2) if pe is not None and not pd.isna(pe) else None,
+            "Forward P/E": round(forward_pe, 2) if forward_pe is not None and not pd.isna(forward_pe) else None,
+            "Price to Book": round(pb, 2) if pb is not None and not pd.isna(pb) else None
         }
     except Exception:
-        return {"P/E Ratio": 24.50, "Forward P/E": 21.20, "Price to Book": 3.10}
+        return {"P/E Ratio": None, "Forward P/E": None, "Price to Book": None}
 
 def get_financial_health(ticker):
+    """STRICT: Returns real ROE, Debt/Equity, and FCF. No hardcoded string fallbacks."""
     try:
         stock = yf.Ticker(ticker)
         info = stock.info if stock.info else {}
@@ -149,91 +157,93 @@ def get_financial_health(ticker):
                 pass
         
         debt_to_equity = info.get("debtToEquity")
+        if not debt_to_equity or pd.isna(debt_to_equity):
+            try:
+                total_debt = extract_statement_metric(stock.balance_sheet, ["Total Debt"])
+                total_equity = extract_statement_metric(stock.balance_sheet, ["Stockholders Equity"])
+                if total_debt and total_equity and total_equity > 0:
+                    debt_to_equity = (total_debt / total_equity) * 100
+            except Exception:
+                pass
+        
         fcf = info.get("freeCashflow")
         if not fcf or pd.isna(fcf):
             try:
                 ocf = extract_statement_metric(stock.cashflow, ["Operating Cash Flow"])
                 capex = extract_statement_metric(stock.cashflow, ["Capital Expenditure"])
-                if ocf: fcf = ocf - (abs(capex) if capex else 0)
+                if ocf: 
+                    fcf = ocf - (abs(capex) if capex else 0)
             except Exception:
                 pass
 
+        # Adjust metric formatting to convert legacy percentages to ratios if needed
+        d_e_val = None
+        if debt_to_equity is not None and not pd.isna(debt_to_equity):
+            d_e_val = f"{debt_to_equity / 100:.2f}" if debt_to_equity > 5 else f"{debt_to_equity:.2f}"
+
         return {
-            "ROE": f"{roe * 100:.2f}%" if roe else "16.50%",
-            "Debt to Equity": f"{debt_to_equity:.2f}" if debt_to_equity else "0.45",
-            "Free Cash Flow": format_financial_units(fcf, ticker) if fcf else ("₹18,420.00 Cr" if ticker.endswith(".NS") else "$4,250.00 M")
+            "ROE": f"{roe * 100:.2f}%" if roe is not None and not pd.isna(roe) else None,
+            "Debt to Equity": d_e_val,
+            "Free Cash Flow": format_financial_units(fcf, ticker) if fcf is not None else None
         }
     except Exception:
-        return {"ROE": "16.50%", "Debt to Equity": "0.45", "Free Cash Flow": "N/A"}
+        return {"ROE": None, "Debt to Equity": None, "Free Cash Flow": None}
 
 def calculate_graham_value(ticker):
-    """CRITICAL FIX: Eliminates casting crashes and applies precise data-center relative proxy bounds."""
+    """STRICT: Traditional Benjamin Graham Square Root valuation. Returns None if inputs missing."""
     try:
-        current_price = get_current_price(ticker)
-        if not current_price:
-            return 661.32 if ticker.endswith(".NS") or ticker.endswith(".BO") else 150.00
-            
         stock = yf.Ticker(ticker)
         info = stock.info if stock.info else {}
+        
         eps = info.get("trailingEps")
         bvps = info.get("bookValue")
         
+        if not eps or not bvps or pd.isna(eps) or pd.isna(bvps):
+            try:
+                shares = info.get("sharesOutstanding") or info.get("impliedSharesOutstanding")
+                net_income = extract_statement_metric(stock.financials, ["Net Income"])
+                total_assets = extract_statement_metric(stock.balance_sheet, ["Total Assets"])
+                total_liab = extract_statement_metric(stock.balance_sheet, ["Total Liabilities"])
+                
+                if shares and shares > 0:
+                    if net_income: 
+                        eps = net_income / shares
+                    if total_assets and total_liab: 
+                        bvps = (total_assets - total_liab) / shares
+            except Exception:
+                pass
+        
         if eps and bvps and eps > 0 and bvps > 0:
-            return float((22.5 * eps * bvps) ** 0.5)
-            
-        # Cloud Baseline Proxy: Calibrated to match strict blue-chip defensive evaluation ranges (~51.15% of market price)
-        return float(current_price * 0.5115)
+            val = (22.5 * eps * bvps) ** 0.5
+            return round(float(val), 2) if not pd.isna(val) else None
+        return None
     except Exception:
-        return 661.32 if ticker.endswith(".NS") or ticker.endswith(".BO") else 150.00
+        return None
 
 def calculate_dcf_value(ticker):
-    """CRITICAL FIX: Establishes clear multi-horizon valuation ranges relative to modern close baselines."""
-    try:
-        current_price = get_current_price(ticker)
-        if not current_price:
-            return 1485.00 if ticker.endswith(".NS") or ticker.endswith(".BO") else 175.00
-            
-        stock = yf.Ticker(ticker)
-        info = stock.info if stock.info else {}
-        fcf = info.get("freeCashflow")
-        shares = info.get("sharesOutstanding") or info.get("impliedSharesOutstanding")
-        
-        if fcf and shares and shares > 0:
-            fcf_per_share = fcf / shares
-            discount_factor = 1.09
-            pv_fcf = 0
-            for year in range(1, 6):
-                pv_fcf += (fcf_per_share * (1.10 ** year)) / (discount_factor ** year)
-            terminal_val = (fcf_per_share * (1.10 ** 5) * 18.0) / (discount_factor ** 5)
-            dcf_total = pv_fcf + terminal_val
-            if dcf_total > 0:
-                return float(dcf_total)
-                
-        # Cloud Baseline Proxy: Delivers standard premium growth horizon valuation (~15% upside tracking)
-        return float(current_price * 1.15)
-    except Exception:
-        return 1485.00 if ticker.endswith(".NS") or ticker.endswith(".BO") else 175.00
+    """DEPRECATED: Removed per retail analytical specification rules."""
+    return None
 
 def get_shareholding_pattern(ticker):
+    """STRICT: Extracts institutional blocks. Returns None if unavailable."""
     try:
         stock = yf.Ticker(ticker)
         info = stock.info if stock.info else {}
         insiders = info.get("heldPercentInsiders")
         institutions = info.get("heldPercentInstitutions")
         
-        if (insiders is None or insiders == 0) and (ticker.endswith(".NS") or ticker.endswith(".BO")):
-            return {"insiders": 0.504, "institutions": 0.322}
         return {
-            "insiders": float(insiders) if insiders is not None else 0.14,
-            "institutions": float(institutions) if institutions is not None else 0.62
+            "insiders": float(insiders) if insiders is not None and not pd.isna(insiders) else None,
+            "institutions": float(institutions) if institutions is not None and not pd.isna(institutions) else None
         }
     except Exception:
-        return {"insiders": 0.504, "institutions": 0.322} if ticker.endswith(".NS") or ticker.endswith(".BO") else {"insiders": 0.14, "institutions": 0.62}
+        return {"insiders": None, "institutions": None}
 
 def get_technical_indicators(ticker):
     try:
         df = yf.download(ticker, period="1y", progress=False)
-        if df.empty: return None
+        if df.empty: 
+            return None
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
             
@@ -242,7 +252,8 @@ def get_technical_indicators(ticker):
         df['Low'] = pd.to_numeric(df['Low'], errors='coerce')
         df = df.dropna(subset=['Close', 'High', 'Low']).copy()
 
-        if len(df) < 50: return None
+        if len(df) < 50: 
+            return None
 
         delta = df['Close'].diff()
         gain = delta.clip(lower=0)
@@ -257,20 +268,22 @@ def get_technical_indicators(ticker):
         sma_50_series = df['Close'].rolling(window=50).mean()
         
         latest_close = float(df['Close'].iloc[-1])
-        sma_200_val = latest_close * 0.92
+        
+        # FIXED: Only compute 200 DMA if 200 actual active data elements exist
+        sma_200_val = None
         if len(df) >= 200:
             sma_200_series = df['Close'].rolling(window=200).mean()
-            sma_200_val = float(sma_200_series.iloc[-1])
+            sma_200_val = float(sma_200_series.iloc[-1]) if not pd.isna(sma_200_series.iloc[-1]) else None
         
         support_val = float(df['Low'].rolling(window=50).min().iloc[-1])
         resistance_val = float(df['High'].rolling(window=50).max().iloc[-1])
 
         return {
             "Close": latest_close,
-            "RSI": float(rsi_series.iloc[-1]) if not pd.isna(rsi_series.iloc[-1]) else 54.20,
-            "EMA_20": float(ema_20_series.iloc[-1]),
-            "EMA_50": float(ema_50_series.iloc[-1]),
-            "50 DMA": float(sma_50_series.iloc[-1]),
+            "RSI": float(rsi_series.iloc[-1]) if not pd.isna(rsi_series.iloc[-1]) else None,
+            "EMA_20": float(ema_20_series.iloc[-1]) if not pd.isna(ema_20_series.iloc[-1]) else None,
+            "EMA_50": float(ema_50_series.iloc[-1]) if not pd.isna(ema_50_series.iloc[-1]) else None,
+            "50 DMA": float(sma_50_series.iloc[-1]) if not pd.isna(sma_50_series.iloc[-1]) else None,
             "200 DMA": sma_200_val,
             "Support": support_val,
             "Resistance": resistance_val,
@@ -304,3 +317,4 @@ def get_recent_news_headlines(ticker):
         return headlines if headlines else [{"headline": f"No recent news catalyst found for {ticker}.", "url": "#"}]
     except Exception:
         return [{"headline": f"No recent news catalyst found for {ticker}.", "url": "#"}]
+    
