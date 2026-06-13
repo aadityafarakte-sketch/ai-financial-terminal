@@ -161,11 +161,9 @@ def get_unified_terminal_data(ticker_symbol):
                 "hist_df": hist_df  
             }
         except Exception as exc:
-            logger.warning(f"Network processing attempt {attempt + 1} failed for {ticker_symbol}: {type(exc).__name__}")
-            if attempt == max_retries - 1:
-                logger.error(f"All network pipeline retries exhausted for asset target {ticker_symbol}")
-                return None
-            time.sleep(2 ** attempt) 
+    st.error(f"DEBUG ERROR: {type(exc).__name__}: {str(exc)}")
+    logger.exception(exc)
+    raise
     return None
 
 # --- RUN RENDER ROUTINE ---
