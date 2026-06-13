@@ -3,7 +3,7 @@ import plotly.graph_objects as go
 import json
 import time
 import logging
-import re  # FIXED: Problem #3 - Added regex module for robust ticker validation
+import re
 import yfinance as yf
 import pandas as pd
 
@@ -25,7 +25,6 @@ st.session_state.setdefault("active_exchange", None)
 try:
     finance_tools.init_db()
 except Exception as db_err:
-    # FIXED: Problem #10 - Sanitized error logging to prevent potential key leaks
     logger.error(f"Database infrastructure initialization failure: {type(db_err).__name__}")
 
 # --- STREAMLIT PAGE ARCHITECTURE CONFIGURATION ---
@@ -54,7 +53,6 @@ total_capital = st.sidebar.number_input("Total Trading Capital", min_value=1000.
 risk_pct = st.sidebar.slider("Risk Tolerance per Trade (%)", min_value=0.1, max_value=5.0, value=1.0, step=0.1)
 risk_amount = total_capital * (risk_pct / 100.0)
 
-# FIXED: Problem #9 - Replaced hardcoded max share allocation cap with a configurable sidebar parameter
 max_share_cap = st.sidebar.number_input("Maximum Allowed Position Shares", min_value=1000, value=50000000, step=50000)
 
 st.sidebar.markdown("---")
@@ -92,7 +90,6 @@ exchange_select = c2.selectbox(
     index=["NSE", "BSE", "NASDAQ", "NYSE"].index(st.session_state.active_exchange) if st.session_state.active_exchange else 0
 )
 
-# FIXED: Problem #3 - Replaced loose string evaluation with an exact, restrictive regex validation pattern
 is_valid_input = True
 if target_input:
     if not re.match(r'^[A-Z0-9.-]{1,15}$', target_input):
@@ -108,24 +105,17 @@ if st.button("🔍 Run Terminal Analytics Engine", use_container_width=True) and
         st.rerun()
 
 # --- CENTRALIZED USER PERFORMANCE DATA FETCH PIPELINE ---
-# FIXED: Problem #8 - Caching strategy can be dynamically tuned here. Defaulting to 300s TTL.
 @st.cache_data(ttl=300)
 def get_unified_terminal_data(ticker_symbol):
-    """
-    Orchestrates robust financial retrieval.
-    Instantiates yf.Ticker core exactly once (Problem #2) and runs exponential backoff retries.
-    """
     logger.info(f"Initiating network data extraction pipeline for asset: {ticker_symbol}")
     max_retries = 3
     
     for attempt in range(max_retries):
         try:
-            # FIXED: Problem #1 - Removed 'timeout' keyword argument to guarantee cross-version yfinance stability
             hist_df = yf.download(ticker_symbol, period="1y", progress=False)
             if hist_df.empty:
                 raise ValueError("The downloaded financial dataframe returned empty metrics from the network channel.")
             
-            # Normalize historical data framing vectors immediately after download
             if isinstance(hist_df.columns, pd.MultiIndex):
                 hist_df.columns = hist_df.columns.get_level_values(0)
             
@@ -138,16 +128,13 @@ def get_unified_terminal_data(ticker_symbol):
                 else:
                     hist_df['Date'] = hist_df.index
 
-            # FIXED: Problem #2 - Instantiating the Ticker object exactly ONCE here to hand down as a dependency
-            stock_obj = yf.Ticker(ticker_symbol)
-
-            # Query backend framework tools passing exactly matched optimized function signatures
-            current_price = finance_tools.get_current_price(ticker_symbol, hist_df)
-            tech_indicators = finance_tools.get_technical_indicators(ticker_symbol, hist_df)
-            key_ratios = finance_tools.get_key_ratios(stock_obj, current_price)
-            financial_health = finance_tools.get_financial_health(stock_obj, ticker_symbol)
-            graham_value = finance_tools.calculate_graham_value(stock_obj, current_price)
-            shareholding = finance_tools.get_shareholding_pattern(stock_obj, ticker_symbol)
+            # FIXED: Issue #1 & #3 - Swapped multiple arguments for a single string parameter and removed unused stock_obj
+            current_price = finance_tools.get_current_price(ticker_symbol)
+            tech_indicators = finance_tools.get_technical_indicators(ticker_symbol)
+            key_ratios = finance_tools.get_key_ratios(ticker_symbol)
+            financial_health = finance_tools.get_financial_health(ticker_symbol)
+            graham_value = finance_tools.calculate_graham_value(ticker_symbol)
+            shareholding = finance_tools.get_shareholding_pattern(ticker_symbol)
             news_headlines = finance_tools.get_recent_news_headlines(ticker_symbol)
             
             return {
@@ -161,9 +148,11 @@ def get_unified_terminal_data(ticker_symbol):
                 "hist_df": hist_df  
             }
         except Exception as exc:
-    st.error(f"DEBUG ERROR: {type(exc).__name__}: {str(exc)}")
-    logger.exception(exc)
-    raise
+            # FIXED: Issue #2 - Corrected indentation parameters inside the diagnostic error block
+            st.error(f"🚨 DEBUG ERROR: {type(exc).__name__}: {str(exc)}")
+            logger.exception(exc)
+            raise exc
+            
     return None
 
 # --- RUN RENDER ROUTINE ---
@@ -177,8 +166,8 @@ if st.session_state.active_ticker:
     with st.spinner(f"Extracting serverless data metrics for {ticker}..."):
         data_payload = get_unified_terminal_data(ticker)
         
-    # FIXED: Problem #5 - Hardened check to ensure both price data AND technical metrics are fully populated
-    if not data_payload or data_payload["current_price"] is None or data_payload["tech_indicators"] is None:
+    # FIXED: Issue #4 - Relaxed checking constraints to isolate structural breaks to missing current price components only
+    if not data_payload or data_payload["current_price"] is None:
         st.error(f"Pipeline Connection Refused: Unable to extract complete structural data profiles for {ticker}. Verify network channels or exchange formatting suffix.")
     else:
         current_price = data_payload["current_price"]
@@ -272,7 +261,6 @@ if st.session_state.active_ticker:
         with v_left:
             st.markdown("### 🎯 Quantitative Capital Position Allocations")
             
-            # FIXED: Problem #7 - Dynamically assigned the support floor baseline as the intuitive stop loss default value
             default_stop_value = float(support_floor) if (support_floor and support_floor < current_price and support_floor > 0) else float(current_price * 0.95)
             
             stop_loss = st.number_input(
@@ -297,7 +285,6 @@ if st.session_state.active_ticker:
                 capital_based_shares = int(total_capital / current_price)
                 max_shares_to_buy = min(risk_based_shares, capital_based_shares)
                 
-                # FIXED: Problem #9 - Linked hard limit constraint directly to the configurable max_share_cap variable
                 if max_shares_to_buy > max_share_cap:
                     max_shares_to_buy = max_share_cap
                     
@@ -331,8 +318,6 @@ if st.session_state.active_ticker:
             st.markdown("### 📊 6-Month Historical Close Vector Candlestick")
             if hist_df is not None and not hist_df.empty and 'Date' in hist_df.columns:
                 try:
-                    # FIXED: Problem #4 - Filtered the historical data frame down to the last 180 days 
-                    # so the visual content accurately matches the 6-Month layout title
                     hist_df['Date'] = pd.to_datetime(hist_df['Date'])
                     six_months_cutoff = hist_df['Date'].max() - pd.Timedelta(days=180)
                     filtered_chart_df = hist_df[hist_df['Date'] >= six_months_cutoff]
@@ -396,7 +381,6 @@ if st.session_state.active_ticker:
                     serialized_financial_context = json.dumps(financial_context_dict, indent=2, default=str)
                     ai_report = ai_engine.generate_financial_analysis(ticker, user_query, serialized_financial_context)
                     
-                    # FIXED: Problem #6 - Intercept responses robustly. Any standard message errors or dictionary failure flags will be processed cleanly
                     if isinstance(ai_report, dict) and not ai_report.get("success"):
                         logger.error(f"Structured error payload captured: {ai_report.get('error')}")
                         st.error(f"The AI Research Engine turned up an error: {ai_report.get('error_msg', 'Service Limit Reached')}")
@@ -407,7 +391,6 @@ if st.session_state.active_ticker:
                         st.markdown("### 📋 Institutional Equity Research Brief")
                         st.markdown(ai_report)
                 except Exception as ai_run_err:
-                    # FIXED: Problem #10 - Wrapped in a sanitized log format to isolate sensitive API or user details
                     logger.error(f"Generative AI execution pipeline failure: {type(ai_run_err).__name__}")
                     st.error("An unexpected service interruption occurred while building research reports via the cloud intelligence engine.")
 else:
